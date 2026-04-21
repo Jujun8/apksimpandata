@@ -89,5 +89,5 @@ else:
         else:
             st.write("Belum ada aktivitas pengiriman data.")
             
-    elif password != "" and password != ADMIN_PASSWORD:
+    elif password != "password" and password != ADMIN_PASSWORD:
         st.error("Password Salah! Akses ditolak.")
