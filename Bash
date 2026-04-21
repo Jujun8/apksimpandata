@@ -1,1 +1,0 @@
-pip install PyDrive2 streamlit
