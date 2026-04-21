@@ -1,71 +1,65 @@
 import streamlit as st
-import psycopg2
 import json
+import os
+from datetime import datetime
 
-# 1. Konfigurasi Koneksi Database (Samakan dengan application.properties Java Anda)
-def get_connection():
-    return psycopg2.connect(
-        host="localhost",
-        database="db_kominfo_data",
-        user="postgres",
-        password="rahasia123",
-        port="5432"
-    )
+# Nama file untuk menyimpan data
+DATA_FILE = "data_simpanan_dinas.json"
 
-# 2. Judul Aplikasi
-st.set_page_config(page_title="Pusat Data Kominfo", layout="centered")
-st.title("🏛️ Pengumpulan Data Sektoral")
-st.subheader("Formulir Input Data Antar Dinas")
+# Fungsi untuk menyimpan data ke file JSON
+def simpan_ke_json(data_baru):
+    # 1. Baca data lama jika file sudah ada
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            try:
+                data_list = json.load(f)
+            except json.JSONDecodeError:
+                data_list = []
+    else:
+        data_list = []
 
-# 3. Form Input
-with st.form("form_data_dinas"):
-    st.write("Silakan isi data di bawah ini:")
-    
-    # Meta Data
-    form_id = st.number_input("ID Formulir", min_value=1, value=1)
-    opd_id = st.number_input("ID Dinas (OPD)", min_value=1, value=101)
-    
-    st.divider()
-    
-    # Contoh Data Dinamis (Ini yang akan masuk ke kolom JSONB)
-    nama_petugas = st.text_input("Nama Petugas Penginput")
-    kategori_data = st.selectbox("Kategori Data", ["Kesehatan", "Pendidikan", "Infrastruktur"])
-    jumlah_capaian = st.number_input("Nilai Capaian (Angka)", min_value=0)
-    catatan_tambahan = st.text_area("Catatan/Kendala")
-    
-    submitted = st.form_submit_state = st.form_submit_button("Kirim Data ke Kominfo")
+    # 2. Tambahkan data baru
+    data_list.append(data_baru)
 
-# 4. Logika Penyimpanan (Sinkron dengan struktur tabel Java)
+    # 3. Tulis kembali ke file
+    with open(DATA_FILE, "w") as f:
+        json.dump(data_list, f, indent=4)
+
+# --- Tampilan Aplikasi ---
+st.set_page_config(page_title="Pusat Data Kominfo", page_icon="📁")
+st.title("📁 Pengumpulan Data Sektoral")
+st.info("Mode Penyimpanan: File Lokal (JSON)")
+
+with st.form("form_input"):
+    nama_dinas = st.text_input("Nama Dinas (OPD)")
+    kategori = st.selectbox("Kategori Data", ["Kesehatan", "Pendidikan", "Sosial", "Ekonomi"])
+    isi_data = st.text_area("Detail Laporan/Data")
+    
+    submitted = st.form_submit_button("Simpan Data")
+
 if submitted:
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
-        
-        # Susun data jawaban menjadi format JSON (Dictionary Python)
-        jawaban_json = {
-            "nama_petugas": nama_petugas,
-            "kategori": kategori_data,
-            "nilai": jumlah_capaian,
-            "catatan": catatan_tambahan
+    if nama_dinas and isi_data:
+        # Buat struktur data
+        payload = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dinas": nama_dinas,
+            "kategori": kategori,
+            "data": isi_data
         }
         
-        # Query SQL (Sesuaikan nama kolom dengan tabel di Java/Postgres)
-        query = """
-            INSERT INTO tabel_submissions (form_id, opd_pengirim_id, data_jawaban)
-            VALUES (%s, %s, %s)
-        """
-        
-        cur.execute(query, (form_id, opd_id, json.dumps(jawaban_json)))
-        conn.commit()
-        
-        st.success("✅ Data berhasil dikirim dan disimpan di Database Pusat!")
-        
-        cur.close()
-        conn.close()
-    except Exception as e:
-        st.error(f"❌ Gagal menyimpan data: {e}")
+        # Jalankan fungsi simpan
+        simpan_ke_json(payload)
+        st.success(f"✅ Data dari {nama_dinas} berhasil disimpan ke file {DATA_FILE}!")
+    else:
+        st.warning("Mohon isi semua bidang yang tersedia.")
 
-# 5. Fitur Tambahan: Lihat Data Terkini
-if st.checkbox("Tampilkan Data Terakhir yang Masuk"):
-    st.write("Data dari tabel_submissions (PostgreSQL):")
-    # Logika fetch data bisa ditambahkan di sini
+# --- Fitur Lihat Data ---
+st.divider()
+if st.checkbox("Lihat Semua Data yang Tersimpan"):
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            list_data = json.load(f)
+            st.write(f"Total entri: {len(list_data)}")
+            st.json(list_data)
+    else:
+        st.info("Belum ada data yang tersimpan.")
