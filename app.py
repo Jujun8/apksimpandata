@@ -75,12 +75,12 @@ else:
             st.divider()
             st.subheader("📝 Edit Data")
             
-            # Pilih ID data yang ingin diedit
-            list_id = [item['id'] for item in data_logs]
+        
+            list_id = [item.get('id', index + 1) for index, item in enumerate(data_logs)]
             id_pilihan = st.selectbox("Pilih ID Data yang ingin diubah:", list_id)
             
-            # Ambil data lama berdasarkan ID
-            index_pilihan = next((index for (index, d) in enumerate(data_logs) if d["id"] == id_pilihan), None)
+           
+            index_pilihan = next((index for (index, d) in enumerate(data_logs) if d.get("id", index + 1) == id_pilihan), None)
             data_lama = data_logs[index_pilihan]
 
             # Form Edit
