@@ -1,92 +1,71 @@
 import streamlit as st
-import pandas as pd
-import sqlite3
-import os
+import psycopg2
+import json
 
-# --- KONEKSI DATABASE ---
-def init_db():
-    conn = sqlite3.connect('data_opd.db')
-    c = conn.cursor()
-    # Membuat tabel jika belum ada
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS inventaris (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nama_barang TEXT,
-            kategori TEXT,
-            jumlah INTEGER,
-            kondisi TEXT,
-            tanggal_input DATE
-        )
-    ''')
-    conn.commit()
-    return conn
+# 1. Konfigurasi Koneksi Database (Samakan dengan application.properties Java Anda)
+def get_connection():
+    return psycopg2.connect(
+        host="localhost",
+        database="db_kominfo_data",
+        user="postgres",
+        password="rahasia123",
+        port="5432"
+    )
 
-# --- FUNGSI CRUD ---
-def simpan_data(nama, kategori, jumlah, kondisi, tanggal):
-    conn = sqlite3.connect('data_opd.db')
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO inventaris (nama_barang, kategori, jumlah, kondisi, tanggal_input)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (nama, kategori, jumlah, kondisi, tanggal))
-    conn.commit()
-    conn.close()
+# 2. Judul Aplikasi
+st.set_page_config(page_title="Pusat Data Kominfo", layout="centered")
+st.title("🏛️ Pengumpulan Data Sektoral")
+st.subheader("Formulir Input Data Antar Dinas")
 
-def tampilkan_data():
-    conn = sqlite3.connect('data_opd.db')
-    df = pd.read_sql_query("SELECT * FROM inventaris", conn)
-    conn.close()
-    return df
-
-# --- UI STREAMLIT ---
-st.set_page_config(page_title="Sistem Informasi Aset OPD", layout="wide")
-
-st.title("🏛️ Pengelolaan Data Inventaris OPD")
-st.markdown("Gunakan formulir di bawah untuk mencatat aset baru.")
-
-# Inisialisasi DB
-init_db()
-
-# Membuat dua kolom (Form Input & Tabel Data)
-col1, col2 = st.columns([1, 2])
-
-with col1:
-    st.subheader("Input Data Baru")
-    with st.form("form_aset", clear_on_submit=True):
-        nama_barang = st.text_input("Nama Barang")
-        kategori = st.selectbox("Kategori", ["Elektronik", "Mebel", "Kendaraan", "Alat Kantor"])
-        jumlah = st.number_input("Jumlah Unit", min_value=1, step=1)
-        kondisi = st.radio("Kondisi", ["Baik", "Rusak Ringan", "Rusak Berat"])
-        tanggal = st.date_input("Tanggal Perolehan")
-        
-        submit = st.form_submit_button("Simpan ke Database")
-        
-        if submit:
-            if nama_barang:
-                simpan_data(nama_barang, kategori, jumlah, kondisi, tanggal)
-                st.success(f"Data {nama_barang} berhasil disimpan!")
-                st.rerun() # Refresh untuk update tabel
-            else:
-                st.error("Nama barang tidak boleh kosong!")
-
-with col2:
-    st.subheader("Daftar Inventaris Terdaftar")
-    data = tampilkan_data()
+# 3. Form Input
+with st.form("form_data_dinas"):
+    st.write("Silakan isi data di bawah ini:")
     
-    if not data.empty:
-        # Menampilkan tabel
-        st.dataframe(data, use_container_width=True)
-        
-        # Fitur Export ke Excel/CSV
-        csv = data.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Data (CSV)",
-            data=csv,
-            file_name='data_inventaris_opd.csv',
-            mime='text/csv',
-        )
-    else:
-        st.info("Belum ada data yang tersimpan.")
+    # Meta Data
+    form_id = st.number_input("ID Formulir", min_value=1, value=1)
+    opd_id = st.number_input("ID Dinas (OPD)", min_value=1, value=101)
+    
+    st.divider()
+    
+    # Contoh Data Dinamis (Ini yang akan masuk ke kolom JSONB)
+    nama_petugas = st.text_input("Nama Petugas Penginput")
+    kategori_data = st.selectbox("Kategori Data", ["Kesehatan", "Pendidikan", "Infrastruktur"])
+    jumlah_capaian = st.number_input("Nilai Capaian (Angka)", min_value=0)
+    catatan_tambahan = st.text_area("Catatan/Kendala")
+    
+    submitted = st.form_submit_state = st.form_submit_button("Kirim Data ke Kominfo")
 
-# Sidebar Informasi
-st.sidebar.info(f"Penyimpanan aktif: **Local SQLite (data_opd.db)**")
+# 4. Logika Penyimpanan (Sinkron dengan struktur tabel Java)
+if submitted:
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        
+        # Susun data jawaban menjadi format JSON (Dictionary Python)
+        jawaban_json = {
+            "nama_petugas": nama_petugas,
+            "kategori": kategori_data,
+            "nilai": jumlah_capaian,
+            "catatan": catatan_tambahan
+        }
+        
+        # Query SQL (Sesuaikan nama kolom dengan tabel di Java/Postgres)
+        query = """
+            INSERT INTO tabel_submissions (form_id, opd_pengirim_id, data_jawaban)
+            VALUES (%s, %s, %s)
+        """
+        
+        cur.execute(query, (form_id, opd_id, json.dumps(jawaban_json)))
+        conn.commit()
+        
+        st.success("✅ Data berhasil dikirim dan disimpan di Database Pusat!")
+        
+        cur.close()
+        conn.close()
+    except Exception as e:
+        st.error(f"❌ Gagal menyimpan data: {e}")
+
+# 5. Fitur Tambahan: Lihat Data Terkini
+if st.checkbox("Tampilkan Data Terakhir yang Masuk"):
+    st.write("Data dari tabel_submissions (PostgreSQL):")
+    # Logika fetch data bisa ditambahkan di sini
